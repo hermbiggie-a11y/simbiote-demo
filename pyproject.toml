@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simbiote"
+version = "0.3.0"
+description = "Offline scan, simulation, teleoperation, and agentic control platform for mobile manipulators"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy",
+  "Pillow",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.9",
+  "onnx>=1.16",
+  "onnxruntime>=1.18",
+  "onnxscript>=0.1",
+]
+usd = [
+  "usd-core>=24.11",
+]
+
+[project.scripts]
+simbiote-map = "simbiote.mapper.cli:main"
+simbiote-agentic = "simbiote.agentic.agentic_session:main"
+simbiote-teleop = "simbiote.teleop.teleop_session:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["simbiote*"]
+
+# Non-Python payloads the package resolves at runtime: the stand-in URDFs,
+# the toy teleop robot, and the hospital scene graph the agentic module falls
+# back to. Without this they are missing from a built wheel and every path in
+# `robot_config`/`scene_query`/`sim_stub` resolves to a file that isn't there.
+[tool.setuptools.package-data]
+simbiote = ["assets/**/*.urdf", "assets/**/*.json"]
+"simbiote.sim_stub" = ["*.urdf"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+  "slow: longer-running tests (real PPO convergence, multi-episode rollouts) -- excluded by default via `-m \"not slow\"` in CI-speed runs",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# T20 (print) and TRY003 are deliberately absent: most entry points here are
+# CLIs whose job is to print, and the long-message exceptions are the useful
+# half of the operator errors.
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "ISC", "LOG", "PERF", "PIE", "PTH", "RET", "RUF"]

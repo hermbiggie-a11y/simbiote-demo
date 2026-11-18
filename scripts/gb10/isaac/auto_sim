@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# auto_sim -- open the hospital in Isaac Sim with a menu of canned commands.
+#
+# Type `auto_sim`. It boots Isaac Sim, loads hospital.usd, spawns the
+# Ridgeback + Franka, and then sits on a numbered menu:
+#
+#     [1] go to the nurse station
+#     [2] go to the supply room
+#     [q] quit
+#
+# Pick a number and the robot drives there. The menu comes back afterwards.
+#
+# Defaults to --light: cheap RTX, roof and ceiling lights hidden, 1280x720.
+# Colliders are untouched, so the robot drives exactly as it would at full
+# quality -- only the picture is cheaper. Full RTX on this box makes the
+# window stop answering the desktop, which looks indistinguishable from a
+# crash.
+#
+#     auto_sim --minimal         # building shell only, every prop hidden
+#     auto_sim --full            # full quality, if you want the pretty one
+#
+# Anything else is forwarded to scripts/gb10/agentic/hospital_demo.py, so:
+#     auto_sim --llm fake        # rule-based planner, no model server needed
+#     auto_sim --headless        # no window (see below)
+#     auto_sim "go to room one"  # run that first, then drop into the menu
+#
+# For a one-shot run with no menu, call the demo directly:
+#     scripts/gb10/agentic/hospital_demo.py --gui "go to room one"
+#
+# Edit the menu itself in CANNED_COMMANDS at the top of
+# scripts/gb10/agentic/hospital_demo.py.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="${SIMBIOTE_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+ISAAC_PY="${ISAAC_PYTHON:-$HOME/IsaacSim/_build/linux-aarch64/release/python.sh}"
+
+die() { printf 'auto_sim: %s\n' "$1" >&2; exit 1; }
+
+[ -d "$REPO" ] || die "repo not found at $REPO (override with SIMBIOTE_REPO=...)"
+[ -x "$ISAAC_PY" ] || die "Isaac Sim's python.sh not found at $ISAAC_PY (override with ISAAC_PYTHON=...)"
+[ -f "$REPO/scripts/gb10/agentic/hospital_demo.py" ] || \
+    die "$REPO/scripts/gb10/agentic/hospital_demo.py is missing"
+
+# --headless is ours, not hospital_demo.py's: that script takes --gui and
+# defaults to headless. Translating here means the flag people reach for
+# actually works instead of erroring out.
+# --full is ours too: it means "add no quality flags at all", so it has to be
+# swallowed rather than passed to a demo that has no such option.
+want_gui=1
+want_light=1
+forwarded=()
+for arg in "$@"; do
+    case "$arg" in
+        --headless) want_gui=0 ;;
+        --full) want_light=0 ;;
+        --light|--minimal) want_light=0; forwarded+=("$arg") ;;
+        *) forwarded+=("$arg") ;;
+    esac
+done
+
+# A GUI run with no display fails deep inside Kit with an unhelpful message,
+# so catch it here where we can say what to do about it.
+if [ "$want_gui" = 1 ] && [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    die "no display detected (\$DISPLAY is empty).
+  Run this from the machine's own desktop session, or use:  auto_sim --headless"
+fi
+
+quality_flag=()
+[ "$want_light" = 1 ] && quality_flag=(--light)
+
+gui_flag=()
+[ "$want_gui" = 1 ] && gui_flag=(--gui)
+
+cd "$REPO"
+
+echo "auto_sim: booting Isaac Sim -- this takes about two minutes on a cold start."
+echo "auto_sim: the window may sit blank for most of that. It is not stuck."
+echo "auto_sim: the menu appears once the hospital has loaded. Ctrl-C to abort."
+echo
+
+exec "$ISAAC_PY" scripts/gb10/agentic/hospital_demo.py \
+    "${gui_flag[@]}" "${quality_flag[@]}" --interactive \
+    "${forwarded[@]+"${forwarded[@]}"}"
